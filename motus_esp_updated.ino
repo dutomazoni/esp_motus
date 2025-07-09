@@ -1335,80 +1335,96 @@ void sendConfigTask() {
 }
 
 void checkOtaUpdateTask() {
-  Serial.println("Checking for OTA Update...");
+  if (xSemaphoreTake(httpClientMutex, 0) == pdTRUE) {
+    Serial.println("[OTA] Checking firmware version...");
 
-  if (WiFi.status() == WL_CONNECTED) {
-    digitalWrite(LedBlue, HIGH);
-    WiFiClientSecure secureClient;
-    secureClient.setInsecure();
-    httpClientCheckOtaUpdate.setReuse(false);
-    httpClientCheckOtaUpdate.setTimeout(5000);
-    httpClientCheckOtaUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    WiFiClientSecure client;
+    client.setInsecure();
+    HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
-    if (httpClientCheckOtaUpdate.begin(secureClient, firmwareVersionUrl)) {
-      int httpCode = httpClientCheckOtaUpdate.GET();
+    if (http.begin(client, firmwareVersionUrl)) {
+      int httpCode = http.GET();
       Serial.printf("[OTA] Version check HTTP code: %d\n", httpCode);
 
       if (httpCode == 200) {
-        String newVersion = httpClientCheckOtaUpdate.getString();
+        String newVersion = http.getString();
         newVersion.trim();
+
         Serial.printf("[OTA] Current: %s | Remote: %s\n", currentFirmwareVersion.c_str(), newVersion.c_str());
 
         if (newVersion != currentFirmwareVersion) {
           Serial.println("[OTA] New version found. Fetching asset URL...");
+
           HTTPClient assetHttp;
-          if (assetHttp.begin(firmwareUrl)) {
+          if (assetHttp.begin(client, firmwareUrl)) {
             int assetHttpCode = assetHttp.GET();
             if (assetHttpCode == 200) {
-              String binUrl = assetHttp.getString();
-              binUrl.trim();
-              Serial.printf("[OTA] Got bin URL: %s\n", binUrl.c_str());
-              Serial.println("[OTA] New version found. Downloading...");
+              String payload = assetHttp.getString();
+              payload.trim();
 
-              HTTPClient binHttp;
-              binHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-              if (binHttp.begin(binUrl)) {
-                binHttp.addHeader("Authorization", "token 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");
-                binHttp.addHeader("Accept", "application/octet-stream");
-                int binHttpCode = binHttp.GET();
+              // Parse JSON: extract asset_url and token
+              DynamicJsonDocument doc(1024);
+              DeserializationError error = deserializeJson(doc, payload);
+              if (!error) {
+                String binUrl = doc["asset_url"].as<String>();
+                String githubToken = doc["token"].as<String>();
 
-                if (binHttpCode == 200) {
-                  int contentLength = binHttp.getSize();
-                  if (contentLength > 0 && Update.begin(contentLength)) {
-                    WiFiClient *stream = binHttp.getStreamPtr();
-                    size_t written = Update.writeStream(*stream);
+                Serial.printf("[OTA] Bin URL: %s\n", binUrl.c_str());
+                Serial.printf("[OTA] Received Github token from backend...\n");
+                Serial.println("[OTA] Downloading firmware...");
 
-                    if (Update.end() && Update.isFinished()) {
-                      Serial.println("[OTA] Update successful, rebooting...");
-                      currentFirmwareVersion = newVersion;
-                      delay(2000);
-                      ESP.restart();
+                HTTPClient binHttp;
+                binHttp.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+                if (binHttp.begin(client, binUrl)) {
+                  String authHeader = "token " + githubToken;
+                  binHttp.addHeader("Authorization", authHeader);
+                  binHttp.addHeader("Accept", "application/octet-stream");
+
+                  int binHttpCode = binHttp.GET();
+                  if (binHttpCode == 200) {
+                    int contentLength = binHttp.getSize();
+                    if (contentLength > 0 && Update.begin(contentLength)) {
+                      WiFiClient *stream = binHttp.getStreamPtr();
+                      size_t written = Update.writeStream(*stream);
+
+                      if (Update.end() && Update.isFinished()) {
+                        Serial.println("[OTA] Update successful, rebooting...");
+                        currentFirmwareVersion = newVersion;
+                        delay(2000);
+                        ESP.restart();
+                      } else {
+                        Serial.printf("[OTA] Update failed. Error: %d\n", Update.getError());
+                      }
                     } else {
-                      Serial.printf("[OTA] Update failed. Error: %d\n", Update.getError());
+                      Serial.println("[OTA] Not enough space or invalid content length.");
                     }
                   } else {
-                    Serial.println("[OTA] Not enough space or invalid content length.");
+                    Serial.printf("[OTA] Bin download failed: %d\n", binHttpCode);
                   }
-                } else {
-                  Serial.printf("[OTA] Bin download failed: %d\n", binHttpCode);
+                  binHttp.end();
                 }
-                binHttp.end();
+              } else {
+                Serial.println("[OTA] JSON parse error.");
               }
             } else {
-              Serial.println("[OTA] Already running latest version.");
+              Serial.println("[OTA] Asset request failed.");
             }
-          } else {
-            Serial.printf("[OTA] Version check failed. HTTP: %d\n", httpCode);
+            assetHttp.end();
           }
+        } else {
+          Serial.println("[OTA] Firmware up-to-date.");
         }
       }
 
-      httpClientCheckOtaUpdate.end();
+      http.end();
     } else {
       Serial.println("[OTA] Failed to begin version check.");
     }
+
+    xSemaphoreGive(httpClientMutex);
   } else {
-    digitalWrite(LedBlue, LOW);
+    Serial.println("[OTA] Skipped due to mutex busy");
   }
 }
 
