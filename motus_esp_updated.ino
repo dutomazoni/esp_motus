@@ -71,8 +71,8 @@ const int LedGreen = 19;
 const int ReleBomba = 26;
 
 //Pinos Entradas
-const int AutomaticoSwitch = 25;                //*
-const int AlternarAutomaticoManualButton = 23;  //*
+const int AutomaticoSwitch = 23;                //* 25 antigo auto
+const int AlternarAutomaticoManualButton = 25;  //* 23 antigo manual
 
 int intervalBetweenReadSensors = 900; // 15 * 60 // pra enviar dados a cada 15 minutos
 
