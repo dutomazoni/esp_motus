@@ -50,8 +50,8 @@ SemaphoreHandle_t httpClientMutex;
 String macStr = "123";
 const char *uriSaveData = "https://monitoringsystemnewbackend.onrender.com/dataTableNew";
 const char *uriAlertWaterPump = "https://monitoringsystemnewbackend.onrender.com/alert/water-pump-status";
-String uriChangeWaterPupmStatus = "https://monitoringsystemnewbackend.onrender.com/alert/water-pump-status?esp_id="+macStr;
-String uriGetEstufaConfig = "https://monitoringsystemnewbackend.onrender.com/estufa/esp?espId="+macStr;
+String uriChangeWaterPupmStatus = "https://monitoringsystemnewbackend.onrender.com/alert/water-pump-status?esp_id=" + macStr;
+String uriGetEstufaConfig = "https://monitoringsystemnewbackend.onrender.com/estufa/esp?espId=" + macStr;
 
 const char *firmwareUrl = "https://monitoringsystemnewbackend.onrender.com/asset-url";
 const char *firmwareVersionUrl = "https://monitoringsystemnewbackend.onrender.com/firmware-version.txt";
@@ -71,10 +71,10 @@ const int LedGreen = 19;
 const int ReleBomba = 26;
 
 //Pinos Entradas
-const int AutomaticoSwitch = 23;                //* 25 antigo auto
-const int AlternarAutomaticoManualButton = 25;  //* 23 antigo manual
+const int AutomaticoSwitch = 25;                //* 25 antigo auto
+const int AlternarAutomaticoManualButton = 23;  //* 23 antigo manual
 
-int intervalBetweenReadSensors = 900; // 15 * 60 // pra enviar dados a cada 15 minutos
+int intervalBetweenReadSensors = 900;  // 15 * 60 // pra enviar dados a cada 15 minutos
 
 // Limites NPK
 float limitMinNpk1 = 20.0;
@@ -367,7 +367,8 @@ void setup() {
   httpClientMutex = xSemaphoreCreateMutex();
   if (httpClientMutex == NULL) {
     Serial.println("Failed to create HTTPClient mutex");
-    while (1);  // Halt if the mutex creation fails
+    while (1)
+      ;  // Halt if the mutex creation fails
   }
 
   macStr = getFormattedMacAddress();
@@ -375,8 +376,8 @@ void setup() {
   uriChangeWaterPupmStatus = "https://monitoringsystemnewbackend.onrender.com/alert/water-pump-status?esp_id=" + macStr;
   setupLittleFS();
 
-  
-  
+
+
   if (setupWiFi()) {
     //shouldStopBlinkingBlueLed = true;
     vTaskDelay(2500 / portTICK_RATE_MS);
@@ -521,7 +522,7 @@ void executeSensorsReading() {
   // writeFileInt(LittleFS, pathRTC, timeNowAsTimestamp);
   // lastSavedTime = timeNow;
   SensorReadings *sensorReadings = createSensorReadings();
-  if(sensorReadings) {
+  if (sensorReadings) {
     readSensors(sensorReadings);
     printReadings(sensorReadings);
     if (digitalRead(ReleBomba) == LOW) {
@@ -539,7 +540,6 @@ void executeSensorsReading() {
       free(sensorReadings);
     }
   }
-  
 }
 
 bool fixRTC() {
@@ -557,7 +557,7 @@ bool fixRTC() {
 
 void timeControlTask(void *pvParameters) {
   // tmElements_t timeNow;
-  
+
   int secondsSinceLastReading = 0;
   // time_t timeNowAsTimestamp = makeTime(timeNow);
   Serial.println("executando primeira medição após ligar");
@@ -567,16 +567,16 @@ void timeControlTask(void *pvParameters) {
     Serial.print("Segundos desde a última medição: ");
     Serial.println(secondsSinceLastReading);
     Serial.print("Minutos desde a última medição: ");
-    Serial.println(secondsSinceLastReading/60);
+    Serial.println(secondsSinceLastReading / 60);
     if (secondsSinceLastReading < intervalBetweenReadSensors) {
       secondsSinceLastReading++;
       vTaskDelay(1000 / portTICK_RATE_MS);
       continue;
     } else {
-    secondsSinceLastReading = 0;
-    executeSensorsReading();
+      secondsSinceLastReading = 0;
+      executeSensorsReading();
     }
-    
+
     vTaskDelay(1000 / portTICK_RATE_MS);
   }
   vTaskDelete(NULL);
@@ -613,7 +613,7 @@ void controleManualBombaTask(void *pvParameters) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     Serial.println("Iniciando controle manual da bomba");
     SensorReadings *sensorReadings = createSensorReadings();
-    if(sensorReadings) {
+    if (sensorReadings) {
       for (;;) {
         if (pararControleManualBomba) {
           Serial.println("Parando controle manual da bomba");
@@ -646,7 +646,6 @@ void controleManualBombaTask(void *pvParameters) {
         vTaskDelay(loopDelay / portTICK_RATE_MS);
       }
     }
-    
   }
   vTaskDelete(NULL);
 }
@@ -665,7 +664,7 @@ void controleAutomaticoBombaTask(void *pvParameters) {
     Serial.println("Iniciando controle automático da bomba");
     xQueueSend(alertQueue, &alerta, (TickType_t)0);
     SensorReadings *sensorReadings = createSensorReadings();
-    if(sensorReadings) {
+    if (sensorReadings) {
       for (;;) {
         if (pararControleAutomaticoBomba) {
           Serial.println("Parando controle automático da bomba");
@@ -684,7 +683,7 @@ void controleAutomaticoBombaTask(void *pvParameters) {
           loopCounter = 0;
           shouldRead = true;
         }
-        
+
         if (shouldRead) {
           shouldRead = false;
           readSensors(sensorReadings);
@@ -696,9 +695,22 @@ void controleAutomaticoBombaTask(void *pvParameters) {
             digitalWrite(LedYellow, LOW);
             digitalWrite(LedGreen, HIGH);
             alerta = false;
+            bombaLigada = false;
             xQueueSend(alertQueue, &alerta, (TickType_t)0);
             free(sensorReadings);
             Serial.println("Parando bomba automatico");
+            break;
+          }
+          if (sensorReadings->humNPK1 <= limitMinNpk1) {
+            digitalWrite(ReleBomba, HIGH);
+            digitalWrite(LedRed, HIGH);
+            digitalWrite(LedYellow, HIGH);
+            digitalWrite(LedGreen, LOW);
+            alerta = false;
+            bombaLigada = true;
+            xQueueSend(alertQueue, &alerta, (TickType_t)0);
+            free(sensorReadings);
+            Serial.println("Ligando bomba automatico");
             break;
           }
         }
@@ -706,7 +718,6 @@ void controleAutomaticoBombaTask(void *pvParameters) {
         vTaskDelay(loopDelay / portTICK_RATE_MS);
       }
     }
-    
   }
   vTaskDelete(NULL);
 }
@@ -723,13 +734,13 @@ void readSensors(SensorReadings *sensorReadings) {
         validSHTReading = true;
         break;
       }
-      delay(100); // short delay before retry
+      delay(100);  // short delay before retry
       sht4.getEvent(&humiditySHT40, &tempSHT40);
     }
   }
 
   if (validSHTReading) {
-    sensorReadings->tempAmb = getTempAmb(tempSHT40.temperature);  // Get ambient temperature
+    sensorReadings->tempAmb = getTempAmb(tempSHT40.temperature);            // Get ambient temperature
     sensorReadings->umidAmb = getUmidAmb(humiditySHT40.relative_humidity);  // Get ambient humidity
   } else {
     Serial.println("SHT40 not responding or invalid data");
@@ -985,7 +996,6 @@ void sendDataToServerTask(void *pvParameters) {
         } else {
           digitalWrite(LedBlue, HIGH);
         }
-        
       }
       if (sendDataToServer(sensorReadings)) {
         free(sensorReadings);
@@ -1025,7 +1035,6 @@ void sendAlertToServerTask(void *pvParameters) {
         } else {
           digitalWrite(LedBlue, HIGH);
         }
-      
       }
       sendAlertToServer(alert);
     }
@@ -1111,7 +1120,7 @@ bool sendDataToServer(SensorReadings *sensorReadings) {
 
 
 
-void sendAlertToServer(bool bombaLigada) {
+void sendAlertToServer(bool alert) {
   if (xSemaphoreTake(httpClientMutex, portMAX_DELAY) == pdTRUE) {
     httpClient.setReuse(false);
     httpClient.setTimeout(5000);
@@ -1125,6 +1134,8 @@ void sendAlertToServer(bool bombaLigada) {
 
     if (estado_controle_bomba) {
       doc["estado_controle_bomba"] = "automatico";
+      digitalWrite(ReleBomba, bombaLigada);
+      digitalWrite(LedRed, bombaLigada);
     } else {
       doc["estado_controle_bomba"] = "manual";
     }
@@ -1137,8 +1148,9 @@ void sendAlertToServer(bool bombaLigada) {
     doc["temperatura_folha"] = sensorReadings->tempLeaf;
     doc["umidade_sensor_1"] = sensorReadings->humNPK1;
     doc["umidade_sensor_2"] = sensorReadings->humNPK2;
-    doc["umidade_folha"] = sensorReadings->humLeaf; 
+    doc["umidade_folha"] = sensorReadings->humLeaf;
     serializeJson(doc, data);
+    Serial.printf("Send alert data: %d\n", doc);
     int statusCode = httpClient.POST(data);
     Serial.printf("send alert response status code: %d\n", statusCode);
 
@@ -1185,34 +1197,36 @@ void checkWaterPumpStatusTask(void *parameter) {
             printReadings(sensorReadings);
             Serial.println("Verificando se a bomba será desligada...");
             if (sensorReadings->humNPK1 >= limitMaxNpk1) {
-              bool alerta = true;
-              digitalWrite(ReleBomba, LOW);
-              digitalWrite(LedRed, LOW);
+              bool alerta = false;
               digitalWrite(LedYellow, LOW);
               digitalWrite(LedGreen, HIGH);
-              alerta = false;
-              bombaLigada = false;
+              if (estado_controle_bomba) {
+                alerta = false;
+                bombaLigada = false;
+              }
+
+              Serial.println("Enviando alerta para parar bomba");
               xQueueSend(alertQueue, &alerta, (TickType_t)0);
               free(sensorReadings);
-              Serial.println("Parando bomba automatico");
             }
             if (sensorReadings->humNPK1 <= limitMinNpk1) {
-                bool alerta = true;
-                digitalWrite(ReleBomba, HIGH);
-                digitalWrite(LedRed, HIGH);
-                digitalWrite(LedYellow, HIGH);
-                digitalWrite(LedGreen, LOW);
+              bool alerta = true;
+              digitalWrite(LedYellow, HIGH);
+              digitalWrite(LedGreen, LOW);
+              if (estado_controle_bomba) {
                 alerta = true;
                 bombaLigada = true;
-                xQueueSend(alertQueue, &alerta, (TickType_t)0);
-                free(sensorReadings);
-                Serial.println("Ligando bomba automatico");
               }
+
+              Serial.println("Enviando alerta para ligar bomba");
+              xQueueSend(alertQueue, &alerta, (TickType_t)0);
+              free(sensorReadings);
+            }
             bool bombaLigadaServer = doc["status"]["bomba_ligada"];
-              digitalWrite(ReleBomba, bombaLigadaServer ? HIGH : LOW);
-              digitalWrite(LedRed, bombaLigadaServer ? HIGH : LOW);
-              bombaLigada = bombaLigadaServer;
-              Serial.printf("Bomba status updated: %s\n", bombaLigada ? "ON" : "OFF");
+            digitalWrite(ReleBomba, bombaLigadaServer ? HIGH : LOW);
+            digitalWrite(LedRed, bombaLigadaServer ? HIGH : LOW);
+            bombaLigada = bombaLigadaServer;
+            Serial.printf("Bomba status updated: %s\n", bombaLigada ? "ON" : "OFF");
           } else {
             Serial.println("Failed to parse JSON");
           }
@@ -1283,7 +1297,7 @@ void interpretarCodigoHTTP(int codigoHTTP) {
 
 String getFormattedMacAddress() {
   uint64_t mac = ESP.getEfuseMac();
-  char macStr[13]; 
+  char macStr[13];
   sprintf(macStr, "%012llX", mac);
   return String(macStr);
 }
@@ -1298,12 +1312,12 @@ void sendConfigTask() {
     secureClient.setInsecure();
     httpClientSendConfig.setReuse(false);
     httpClientSendConfig.setTimeout(5000);
-    httpClientSendConfig.begin(secureClient,"https://monitoringsystemnewbackend.onrender.com/esp_config");
+    httpClientSendConfig.begin(secureClient, "https://monitoringsystemnewbackend.onrender.com/esp_config");
     httpClientSendConfig.setTimeout(10000);
     httpClientSendConfig.addHeader("Content-Type", "application/json");
 
     String json = "{";
-    json += "\"espId\":\"" + macStr + "\",";  
+    json += "\"espId\":\"" + macStr + "\",";
     json += "\"limitMinNpk1\":" + String(limitMinNpk1) + ",";
     json += "\"limitMinNpk2\":" + String(limitMinNpk2) + ",";
     json += "\"limitMaxNpk1\":" + String(limitMaxNpk1) + ",";
@@ -1331,7 +1345,6 @@ void sendConfigTask() {
     Serial.println("WiFi not connected");
     digitalWrite(LedBlue, LOW);
   }
-  
 }
 
 void checkOtaUpdateTask() {
@@ -1464,8 +1477,8 @@ void fetchEstufaConfigTask() {
         if (estufa.isNull()) {
           Serial.println("Error: 'estufa' is null in the response.");
         } else {
-          const char* umidade_min_str = estufa["umidade_min"];
-          const char* umidade_max_str = estufa["umidade_max"];
+          const char *umidade_min_str = estufa["umidade_min"];
+          const char *umidade_max_str = estufa["umidade_max"];
 
           // Check if the required fields are null or missing
           if (umidade_min_str == nullptr || umidade_max_str == nullptr) {
@@ -1501,7 +1514,7 @@ void fetchEstufaConfigTask() {
 
 void loop() {
   unsigned long currentMillis = millis();  // Get the current time
-   // Call fetchEstufaConfigTask every 60 seconds
+                                           // Call fetchEstufaConfigTask every 60 seconds
   if (currentMillis - previousMillisFetchEstufaConfig >= interval) {
     previousMillisFetchEstufaConfig = currentMillis;
     fetchEstufaConfigTask();
@@ -1520,9 +1533,8 @@ void loop() {
     
   }*/
 
- 
+
 
 
   // Other non-blocking tasks can be added here
 }
-
